@@ -167,6 +167,6 @@ def update_orders2(auth_token):
 
 token = None
 if (token is None):
-    token = authentificate("damyan17904@gmail.com","e4F#cJHo8P","test453253535")
+    token = authentificate("email","password","test453253535")
 
 update_orders2(token)
