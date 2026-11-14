@@ -1,75 +1,27 @@
-
-import requests
-
-#API 
-URL = "https://api.warframe.market/v2"
-URL2 = "https://api.warframe.market/v1/tools/ducats"
+"""Kept for compatibility: the logic now lives in wfm/market.py. Importing this file no longer runs anything."""
+from wfm import catalog, market
 
 
-def fetch_data():
-    v1 = requests.get(f"{URL}/items")
-    v2 = requests.get(f"{URL2}")
+def best_sets(price=0, limit=10):
+    for period, title in (("day", "last 24 hours"), ("hour", "last hour")):
+        print(f"\nWarframe sets by warframe.market average price ({title}):")
+        for row in market.top_prices(period, "sets", price, limit):
+            print(f"{row['name']}: {row['wa_price']} platinum")
 
-    v1 = v1.json()
-    v2 = v2.json()
 
+def best_components(price=0):
+    for period, title in (("day", "last 24 hours"), ("hour", "last hour")):
+        print(f"\nWarframe components by warframe.market average price ({title}):")
+        for row in market.top_prices(period, "components", price):
+            print(f"{row['name']}: {row['wa_price']} platinum")
 
-    name_id = {item['id']: item['i18n']['en']['name'] for item in v1['data']}
-
-    result_day = [
-        {
-            'name': name_id[item['item']],
-            'wa_price': item['wa_price']
-        }
-        for item in v2['payload']['previous_day']
-        if item['item'] in name_id
-    ]
-
-    result_hour = [
-        {
-            'name': name_id[item['item']],
-            'wa_price': item['wa_price']
-        }
-        for item in v2['payload']['previous_hour']
-        if item['item'] in name_id
-    ]
-
-    result_hour.sort(key=lambda x: x['wa_price'], reverse=True)
-    result_day.sort(key=lambda x: x['wa_price'], reverse=True)
-    return result_hour, result_day
-
-def best_sets(price):
-    result_hour, result_day = fetch_data()
-    result_set_day = [item for item in result_day if 'Set' in item['name']]
-    result_set_hour = [item for item in result_hour if 'Set' in item['name']]
-
-    print("Warframe sets by Warframe.market average price (last 24 hours):")
-    for item in result_set_day[:10]:
-        print(f"{item['name']}: {item['wa_price']} platinum")
-    print("\nWarframe sets by Warframe.market average price (last hour):")
-    for item in result_set_hour[:10]:
-        print(f"{item['name']}: {item['wa_price']} platinum")
-
-def best_components(price):
-    result_hour, result_day = fetch_data()
-    result_component_day = [item for item in result_day if not 'Set' in item['name']]
-    result_component_hour = [item for item in result_hour if not 'Set' in item['name']]
-    print("\nWarframe components by Warframe.market average price (last 24 hours):")
-    for item in result_component_day:
-        if item['wa_price'] >= price:
-            print(f"{item['name']}: {item['wa_price']} platinum")
-    print("\nWarframe components by Warframe.market average price (last hour):")
-    for item in result_component_hour:
-        if item['wa_price'] >= price:
-            print(f"{item['name']}: {item['wa_price']} platinum")
 
 def aver_item(item_name):
-    result_hour, result_day = fetch_data()
-    for item in result_day:
-        if item['name'] == item_name:
-            print(f"\nAverage price of {item_name} last 24 hours: {item['wa_price']} platinum")
-    for item in result_hour:
-        if item['name'] == item_name:
-            print(f"Average price of {item_name} last hour: {item['wa_price']} platinum")
+    item = catalog.find_item(item_name)
+    averages = market.average_price(item)
+    print(f"\nAverage price of {catalog.item_name(item)} last 24 hours: {averages['day']} platinum")
+    print(f"Average price of {catalog.item_name(item)} last hour: {averages['hour']} platinum")
 
-best_components(40)
+
+if __name__ == "__main__":
+    best_components(40)

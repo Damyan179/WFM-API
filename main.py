@@ -1,77 +1,108 @@
-import list_components
-import prices
-import best
-import re
-import os
-import auth
+"""Terminal menu for the warframe.market tools. For the desktop UI run:  python app.py"""
+import getpass
+
+from wfm import auth, catalog, client, market, repricer
+
+
+def show_orders():
+    item = catalog.find_item(input("Item name (e.g. Akstiletto Prime Barrel): "))
+    groups = market.list_orders(item["slug"])
+    titles = {"ingame": "In game", "online": "Online", "offline": "Offline (active in the last 30 days)"}
+    print(f"\nSell orders for {catalog.item_name(item)}")
+    for status, title in titles.items():
+        print(f"\n--- {title} ---")
+        for row in groups[status]:
+            print(f"{row['user']:<28}{row['platinum']:>6} platinum   updated {row['updated']:%Y-%m-%d}" if row['updated']
+                  else f"{row['user']:<28}{row['platinum']:>6} platinum")
+        if not groups[status]:
+            print("(none)")
+
+
+def show_prime_items():
+    for item in catalog.prime_items():
+        print(catalog.item_name(item))
+
+
+def show_average():
+    item = catalog.find_item(input("Item name: "))
+    averages = market.average_price(item)
+    for label, key in (("last 24 hours", "day"), ("last hour", "hour")):
+        value = averages[key]
+        print(f"Average price of {catalog.item_name(item)}, {label}: "
+              + (f"{value:g} platinum" if value is not None else "not published"))
+
+
+def show_top():
+    min_price = int(input("Minimum average price (e.g. 100): "))
+    kind = {"1": "sets", "2": "components"}.get(input("'1' for sets, '2' for components: ").strip())
+    if kind is None:
+        print("Enter 1 or 2.")
+        return
+    for period, title in (("day", "last 24 hours"), ("hour", "last hour")):
+        print(f"\nBest {kind} by average price ({title}):")
+        for row in market.top_prices(period, kind, min_price):
+            print(f"{row['name']}: {row['wa_price']:g} platinum")
+
+
+def account():
+    if not auth.has_credentials():
+        email = input("warframe.market email: ").strip()
+        password = getpass.getpass("Password (not shown): ")
+        auth.sign_in(email, password)
+        print("Signed in. Credentials saved to Windows Credential Manager.")
+    token = auth.get_token()
+    choice = input("'1' profile details, '2' reprice my sell orders: ").strip()
+    if choice == "1":
+        print(auth.profile(token))
+    elif choice == "2":
+        reprice(token)
+    else:
+        print("Enter 1 or 2.")
+
+
+def reprice(token):
+    print("Reading the market...")
+    plan = repricer.build_plan(token, progress=lambda i, n, name: print(f"  {i}/{n} {name}"))
+    changes = [p for p in plan if p.changed]
+    print()
+    for p in plan:
+        target = f"{p.current} -> {p.proposed}" if p.changed else f"{p.current} (no change)"
+        print(f"{p.item_name:<40}{target:<20}{p.note}")
+    if not changes:
+        print("\nNothing to update.")
+        return
+    if input(f"\nApply {len(changes)} price change(s)? [y/N] ").strip().lower() != "y":
+        print("Nothing was changed.")
+        return
+    done = repricer.apply_plan(token, changes)
+    for p in changes:
+        print(f"{p.item_name}: {p.result}")
+    print(f"{done} of {len(changes)} orders updated.")
+
+
+ACTIONS = {"1": show_orders, "2": show_prime_items, "3": show_average, "4": show_top, "5": account}
 
 
 def main():
     while True:
-        print('\n')
-        print("Enter '1' to get sell orders for an item")
-        print("Enter '2' to list all Prime items")
-        print("Enter '3' to get average price of sell orders for an item")
-        print("Enter '4' to get the best components/sets by Warframe.market average price")
-        print("Enter '5' to authenticate with Warframe.market")
-        print("Enter 'exit' or press Enter to quit")
-        item = input()
-        if item == 'exit' or item == '':
-            print("Exiting the program.")
+        print("\n1  Sell orders for an item")
+        print("2  List all Prime items")
+        print("3  Average price of an item")
+        print("4  Best sets/components by average price")
+        print("5  My account: profile or reprice my orders")
+        print("Enter to quit")
+        choice = input("> ").strip()
+        if choice in ("", "exit"):
             break
-        if item not in {'1', '2', '3', '4','5'}:
-            print("Invalid input. Please enter '1', '2', or 'exit'.")
+        action = ACTIONS.get(choice)
+        if action is None:
+            print("Enter a number from 1 to 5.")
             continue
-        if item == '1':
-           item = input("Enter the item component or set name to get sell orders created/updated 30 days ago (e.g., 'Akstiletto Prime Barrel'): ")
-           item = re.sub(r'\s+', '_', item.strip().lower())
-           prices.list_orders(item)
-        if item == '2':
-            results = list_components.list_items()
-            for item in results: 
-                 if 'set' not in item["slug"]:
-                     print(item['i18n']['en']['name'])
-            continue
-        if item == '3':
-            avg_item = input("Enter the item component or set name to get average price of sell orders created/updated 30 days ago (e.g., 'Akstiletto Prime Barrel'): ")
-            avg_item = re.sub(r'\s+',' ', avg_item.strip().title())
-            best.aver_item(avg_item)
-            continue
-        if item == '4':
-            price = input("Enter the minimum warframe.market average price to filter components (e.g., '100'): ")
-            type = input("Enter '1' to see best sets, '2' to see best components: ")
-            try:
-                price = int(price)
-                if type == '1':
-                    best.best_sets(price)
-                elif type == '2':
-                    best.best_components(price)
-                else:
-                    print("Invalid input. Please enter '1', '2', or 'both'.")
-            except ValueError:
-                print("Invalid input. Please enter a valid number for the price.")
-                continue
-        if item == '5':
-            try:
-                email = input("Enter your Warframe.market email: ")
-                password = input("Enter your Warframe.market password: ")
-                device_id = os.urandom(16).hex()
-                token = auth.authentificate(email, password, device_id)
-                print("Authentication successful.")
-                print("device_id:", device_id)
-                print("Select option 1 to check profile details or option 2 to update user orders: ")
-                option = input()
-                if option == '1':
-                    auth.user_data(token)
-                elif option == '2':
-                    auth.update_orders2(token)
-                else:
-                    print("Invalid option selected.")
-            except Exception as e:
-                print(f"Authentication failed: {e}")
-            continue
+        try:
+            action()
+        except (client.WfmError, auth.NotSignedIn, ValueError) as exc:
+            print(f"Error: {exc}")
+
+
 if __name__ == "__main__":
     main()
-
-
-
