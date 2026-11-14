@@ -48,8 +48,8 @@ Target position, lowball share, band, minimum price and the "flag changes over" 
 ## Run from source
 
 ```
-git clone <your-repo-url>
-cd <repo-folder>
+git clone https://github.com/Damyan179/WFM-API.git
+cd WFM-API
 python -m venv .venv
 .venv\Scripts\activate
 python -m pip install -r requirements.txt
